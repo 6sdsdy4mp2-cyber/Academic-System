@@ -80,6 +80,17 @@ th{background:#e7eef1;font-weight:600;color:var(--ink)}
 #sheet canvas{display:block}
 #ink{position:absolute;left:0;top:0;touch-action:none}
 #ink.pen{cursor:crosshair}
+.badge{background:var(--amber);color:#1d2b30;border-radius:3px;padding:2px 8px;font-size:13px;white-space:nowrap}
+#mode{position:fixed;inset:0;background:#0f3d4cd9;display:none;place-items:center;z-index:40}
+#mode.on{display:grid}
+.mbox{background:var(--paper);width:min(540px,92vw);padding:26px 28px;border-radius:6px;border-top:6px solid var(--amber)}
+.mbox h3{margin:0 0 4px;color:var(--ink);font-size:20px}
+.mbox p{margin:0 0 8px;color:#52666d;font-size:14px}
+.mopt{border:1px solid var(--line);background:#fff;border-radius:4px;padding:14px 16px;margin-top:12px}
+.mopt b{color:var(--ink)}.mopt small{display:block;color:#6b7f86;margin:2px 0 10px}
+.mopt .row{margin:0}.mopt input{flex:1}
+#laser{position:absolute;left:0;top:0;pointer-events:none}
+#sheet.night #page{filter:invert(1) hue-rotate(180deg)}
 </style></head><body>
 
 <div id="login"><form id="lf">
@@ -138,27 +149,39 @@ th{background:#e7eef1;font-weight:600;color:var(--ink)}
   </section>
 </main>
 
+<div id="mode" role="dialog" aria-label="選擇打開方式"><div class="mbox">
+<h3>選擇打開方式</h3><p>請選擇這次如何使用這本電子書。</p>
+<div class="mopt"><b>互動模式</b><small>選擇班別，課堂上寫的筆跡會自動保留，同一班下次打開仍然看到。</small>
+<div class="row"><input id="m-cls" list="cls-list" placeholder="選擇或輸入班別（例：中一A）" aria-label="班別"><datalist id="cls-list"></datalist><button class="btn pri" id="m-save">以互動模式打開</button></div></div>
+<div class="mopt"><b>不保存模式</b><small>可以隨意書寫，翻頁或關閉後筆跡全部消失，不留任何紀錄。</small>
+<button class="btn" id="m-temp">以不保存模式打開</button></div>
+<div style="text-align:right;margin-top:14px"><button class="btn" id="m-cancel">取消</button></div></div></div>
 <div id="reader" role="dialog" aria-label="電子書閱讀器">
   <div class="rbar">
-    <span class="rt" id="r-title"></span>
+    <span class="rt" id="r-title"></span><span class="badge" id="r-mode"></span>
     <button class="btn" id="r-prev">◀ 上一頁</button>
-    <span id="r-page">1 / 1</span>
+    <span id="r-page">1 / 1</span><input id="r-jump" class="btn" type="number" min="1" placeholder="跳頁" style="width:64px" aria-label="跳到頁數">
     <button class="btn" id="r-next">下一頁 ▶</button>
     <span class="sep"></span>
     <button class="btn" id="r-zout" title="縮小 (-)">－ 縮小</button>
     <span id="r-zoom">100%</span>
     <button class="btn" id="r-zin" title="放大 (+)">＋ 放大</button>
     <span class="sep"></span>
-    <button class="btn act" id="r-pen">✏ 畫筆</button>
-    <button class="btn" id="r-eraser">橡皮擦</button>
+    <button class="btn act" id="r-pen" title="畫筆 (P)">✏ 畫筆</button>
+    <button class="btn" id="r-hl" title="螢光筆 (H)">🖍 螢光筆</button>
+    <button class="btn" id="r-eraser" title="橡皮擦 (E)">橡皮擦</button>
+    <button class="btn" id="r-laser" title="雷射筆 (L)">🔴 雷射筆</button>
     <input type="color" id="r-color" value="#d93025" title="筆色" aria-label="筆色">
     <select id="r-size" aria-label="筆粗細" class="btn"><option value="2">細</option><option value="4" selected>中</option><option value="8">粗</option></select>
-    <button class="btn" id="r-undo">復原</button>
+    <select id="r-shape" aria-label="圖形" class="btn"><option value="">自由線條</option><option value="line">直線</option><option value="rect">矩形</option><option value="ell">圓形</option></select>
+    <button class="btn" id="r-undo" title="Ctrl+Z">復原</button>
     <button class="btn" id="r-clear">清除本頁筆跡</button>
+    <span class="sep"></span>
+    <button class="btn" id="r-fit">適合寬度</button><button class="btn" id="r-night">夜間</button><button class="btn" id="r-png">匯出本頁</button><button class="btn" id="r-full">全螢幕</button>
     <span style="flex:1"></span>
     <button class="btn" id="r-close">關閉</button>
   </div>
-  <div id="scroll"><div id="sheet"><canvas id="page"></canvas><canvas id="ink"></canvas></div></div>
+  <div id="scroll"><div id="sheet"><canvas id="page"></canvas><canvas id="ink"></canvas><canvas id="laser"></canvas></div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -343,7 +366,7 @@ async function loadBooks() {
   $('#b-form').style.display = ME.admin ? '' : 'none';
   $('#shelf').innerHTML = rows.length ? rows.map(b => `<div class="book"><b>${esc(b.title)}</b>
     <small>${b.kind === 'pdf' ? 'PDF' : '圖片'}・${esc(b.created || '')}</small>
-    <div class="acts"><button class="btn pri" data-o="${b.id}">閱讀</button>
+    <div class="acts"><button class="btn pri" data-o="${b.id}">打開</button>
     ${ME.admin ? `<button class="btn danger" data-x="${b.id}">刪除</button>` : ''}</div></div>`).join('')
     : `<div class="empty">書架是空的。${ME.admin ? '選擇 PDF 或圖片檔後按「新增電子書」。' : '請等管理員新增電子書。'}</div>`;
 }
@@ -361,19 +384,19 @@ on('#shelf', 'onclick', async e => {
     for (const k of await tx('ann', 'readonly', s => s.getAllKeys())) if (k.split('|')[1] === d.x) await del('ann', k);
     loadBooks();
   }
-  if (d.o) openReader(+d.o);
+  if (d.o) askMode(+d.o);
 });
 
 /* ── 閱讀器：翻頁、放大縮小、畫筆 ── */
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const R = {id: 0, kind: '', pdf: null, img: null, page: 1, total: 1, scale: 1.3, strokes: [], tool: 'pen', drawing: null, task: null};
+const R = {id: 0, kind: '', pdf: null, img: null, page: 1, total: 1, scale: 1.3, strokes: [], tool: 'pen', drawing: null, task: null, mode: 'temp', cls: '', trail: [], lz: null, col: {pen: '#d93025', hl: '#ffe600'}};
 const pageCv = $('#page'), ink = $('#ink'), ictx = ink.getContext('2d');
 
-async function openReader(id) {
+async function openReader(id, mode, cls) {
   const b = await get('books', id); if (!b) return;
   if (b.kind === 'pdf' && !window.pdfjsLib) fail('無法載入 PDF 閱讀元件（cdnjs），請確認網路連線。');
-  Object.assign(R, {id, kind: b.kind, page: 1, scale: 1.3, strokes: []});
-  $('#r-title').textContent = b.title; $('#reader').classList.add('on');
+  Object.assign(R, {id, mode, cls, kind: b.kind, page: 1, scale: 1.3, strokes: []});
+  $('#r-title').textContent = b.title; $('#r-mode').textContent = mode === 'save' ? '互動模式・' + cls : '不保存模式'; $('#reader').classList.add('on');
   if (b.kind === 'pdf') {
     R.pdf = await pdfjsLib.getDocument({data: new Uint8Array(await b.blob.arrayBuffer())}).promise; R.total = R.pdf.numPages;
   } else {
@@ -382,11 +405,11 @@ async function openReader(id) {
   }
   gotoPage(1);
 }
-const annKey = () => `${owner()}|${R.id}|${R.page}`;
+const annKey = () => `${R.cls}|${R.id}|${R.page}`;
 async function gotoPage(n) {
   if (R.strokes.length) await saveInk();
   R.page = Math.min(Math.max(1, n), R.total);
-  R.strokes = (await get('ann', annKey())) || [];
+  R.strokes = R.mode === 'save' ? (await get('ann', annKey())) || [] : [];
   await render();
 }
 async function render() {
@@ -404,6 +427,7 @@ async function render() {
     pageCv.getContext('2d').drawImage(R.img, 0, 0, pageCv.width, pageCv.height);
   }
   ink.width = w * dpr; ink.height = h * dpr; ink.style.width = w + 'px'; ink.style.height = h + 'px';
+  lz.width = ink.width; lz.height = ink.height; lz.style.width = ink.style.width; lz.style.height = ink.style.height;
   R.w = w; R.h = h; R.dpr = dpr; redraw();
   $('#r-page').textContent = `${R.page} / ${R.total}`; $('#r-zoom').textContent = Math.round(R.scale / 1.3 * 100) + '%';
 }
@@ -412,27 +436,47 @@ function redraw() {
   ictx.lineCap = ictx.lineJoin = 'round';
   for (const s of [...R.strokes, ...(R.drawing ? [R.drawing] : [])]) {
     ictx.globalCompositeOperation = s.e ? 'destination-out' : 'source-over';
-    ictx.strokeStyle = s.c; ictx.lineWidth = s.w * R.w;
-    ictx.beginPath(); s.p.forEach(([x, y], i) => i ? ictx.lineTo(x * R.w, y * R.h) : ictx.moveTo(x * R.w, y * R.h));
-    if (s.p.length === 1) ictx.lineTo(s.p[0][0] * R.w + .01, s.p[0][1] * R.h);
+    ictx.globalAlpha = s.h ? .35 : 1; ictx.strokeStyle = s.c; ictx.lineWidth = s.w * R.w;
+    const P = s.p.map(([x, y]) => [x * R.w, y * R.h]); ictx.beginPath();
+    if (s.t && P.length > 1) {
+      const a = P[0], b = P[P.length - 1];
+      if (s.t === 'line') { ictx.moveTo(a[0], a[1]); ictx.lineTo(b[0], b[1]); }
+      else if (s.t === 'rect') ictx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+      else ictx.ellipse((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2, Math.abs(b[1] - a[1]) / 2, 0, 0, 7);
+    } else {
+      P.forEach(([x, y], i) => i ? ictx.lineTo(x, y) : ictx.moveTo(x, y));
+      if (P.length === 1) ictx.lineTo(P[0][0] + .01, P[0][1]);
+    }
     ictx.stroke();
   }
+  ictx.globalAlpha = 1;
 }
-const saveInk = () => put('ann', R.strokes, annKey());
+const saveInk = () => R.mode === 'save' ? put('ann', R.strokes, annKey()) : 0;
 const pt = e => { const r = ink.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
 ink.onpointerdown = e => {
+  if (R.tool === 'laser') return;
   ink.setPointerCapture(e.pointerId);
-  const eras = R.tool === 'eraser';
-  R.drawing = {c: $('#r-color').value, e: eras, w: (eras ? +$('#r-size').value * 4 : +$('#r-size').value) / 900, p: [pt(e)]};
+  const er = R.tool === 'eraser', hl = R.tool === 'hl', sz = +$('#r-size').value;
+  R.drawing = {c: $('#r-color').value, e: er, h: hl, t: er ? '' : $('#r-shape').value, w: (er || hl ? sz * 4 : sz) / 900, p: [pt(e)]};
 };
-ink.onpointermove = e => { if (R.drawing) { R.drawing.p.push(pt(e)); redraw(); } };
+ink.onpointermove = e => {
+  if (R.tool === 'laser') { R.lz = pt(e); R.trail.push([...R.lz, performance.now()]); return; }
+  if (R.drawing) { R.drawing.p.push(pt(e)); redraw(); }
+};
+ink.onpointerleave = () => R.lz = null;
 ink.onpointerup = ink.onpointercancel = () => {
   if (!R.drawing) return;
-  R.strokes.push(R.drawing); R.drawing = null; redraw(); saveInk();
+  const d = R.drawing; if (d.t) d.p = [d.p[0], d.p[d.p.length - 1]];
+  R.strokes.push(d); R.drawing = null; redraw(); saveInk();
 };
-function setTool(t) { R.tool = t; $('#r-pen').classList.toggle('act', t === 'pen'); $('#r-eraser').classList.toggle('act', t === 'eraser'); }
-$('#r-pen').onclick = () => setTool('pen');
-$('#r-eraser').onclick = () => setTool('eraser');
+const TOOLS = {pen: '#r-pen', hl: '#r-hl', eraser: '#r-eraser', laser: '#r-laser'};
+function setTool(t) {
+  if (R.tool in R.col) R.col[R.tool] = $('#r-color').value;
+  if (t in R.col) $('#r-color').value = R.col[t];
+  R.tool = t; R.lz = null; ink.style.cursor = t === 'laser' ? 'none' : '';
+  for (const k in TOOLS) $(TOOLS[k]).classList.toggle('act', k === t);
+}
+for (const k in TOOLS) $(TOOLS[k]).onclick = () => setTool(k);
 $('#r-undo').onclick = () => { R.strokes.pop(); redraw(); saveInk(); };
 $('#r-clear').onclick = () => { if (confirm('清除本頁所有筆跡？')) { R.strokes = []; redraw(); saveInk(); } };
 const zoom = f => { R.scale = Math.min(4, Math.max(.4, R.scale * f)); render(); };
@@ -440,14 +484,50 @@ $('#r-zin').onclick = () => zoom(1.2); $('#r-zout').onclick = () => zoom(1 / 1.2
 $('#r-prev').onclick = () => gotoPage(R.page - 1); $('#r-next').onclick = () => gotoPage(R.page + 1);
 $('#r-close').onclick = async () => { await saveInk(); $('#reader').classList.remove('on'); R.strokes = []; R.pdf = null; };
 document.addEventListener('keydown', e => {
-  if (!$('#reader').classList.contains('on') || e.target.tagName === 'SELECT') return;
+  if (!$('#reader').classList.contains('on') || ['SELECT', 'INPUT'].includes(e.target.tagName)) return;
   if (e.key === '+' || e.key === '=') zoom(1.2);
   if (e.key === '-') zoom(1 / 1.2);
   if (e.key === 'ArrowRight' || e.key === 'PageDown') gotoPage(R.page + 1);
   if (e.key === 'ArrowLeft' || e.key === 'PageUp') gotoPage(R.page - 1);
   if (e.key === 'Escape') $('#r-close').click();
+  const k = {p: 'pen', h: 'hl', e: 'eraser', l: 'laser'}[e.key.toLowerCase()]; if (k && !e.ctrlKey && !e.metaKey) setTool(k);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') $('#r-undo').click();
 });
 ink.classList.add('pen');
+
+/* ── 打開方式、雷射筆與閱讀工具 ── */
+let pendingBook = 0, lastCls = '';
+async function askMode(id) {
+  pendingBook = id;
+  const used = (await tx('ann', 'readonly', s => s.getAllKeys())).map(k => k.split('|')[0]), preset = [];
+  for (const g of '一二三四五六') for (const c of 'ABCD') preset.push('中' + g + c);
+  $('#cls-list').innerHTML = [...new Set([...used, ...preset])].map(c => `<option value="${esc(c)}">`).join('');
+  $('#m-cls').value = lastCls; $('#mode').classList.add('on'); $('#m-cls').focus();
+}
+const closeMode = () => $('#mode').classList.remove('on');
+on('#m-save', 'onclick', async () => {
+  const c = $('#m-cls').value.trim().replace(/\|/g, ''); if (!c) fail('請先選擇或輸入班別');
+  lastCls = c; closeMode(); await openReader(pendingBook, 'save', c);
+});
+on('#m-temp', 'onclick', async () => { closeMode(); await openReader(pendingBook, 'temp', ''); });
+$('#m-cancel').onclick = closeMode;
+const lz = $('#laser'), lctx = lz.getContext('2d');
+(function loop() {
+  const t = performance.now(), d = R.dpr || 1; R.trail = R.trail.filter(p => t - p[2] < 700);
+  lctx.setTransform(d, 0, 0, d, 0, 0); lctx.clearRect(0, 0, R.w || 0, R.h || 0);
+  for (const [x, y, ts] of R.trail) { const a = 1 - (t - ts) / 700; lctx.fillStyle = `rgba(255,40,40,${a * .5})`; lctx.beginPath(); lctx.arc(x * R.w, y * R.h, 3 + 4 * a, 0, 7); lctx.fill(); }
+  if (R.lz) { lctx.fillStyle = '#ff2a2a'; lctx.shadowColor = '#f00'; lctx.shadowBlur = 16; lctx.beginPath(); lctx.arc(R.lz[0] * R.w, R.lz[1] * R.h, 7, 0, 7); lctx.fill(); lctx.shadowBlur = 0; }
+  requestAnimationFrame(loop);
+})();
+$('#r-fit').onclick = () => { R.scale = Math.min(4, Math.max(.4, R.scale * ($('#scroll').clientWidth - 48) / R.w)); render(); };
+$('#r-night').onclick = () => $('#sheet').classList.toggle('night');
+$('#r-full').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('#reader').requestFullscreen();
+$('#r-jump').onchange = e => { gotoPage(+e.target.value || R.page); e.target.value = ''; };
+$('#r-png').onclick = () => {
+  const c = document.createElement('canvas'); c.width = pageCv.width; c.height = pageCv.height;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(pageCv, 0, 0); x.drawImage(ink, 0, 0);
+  c.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${$('#r-title').textContent}-第${R.page}頁.png`; a.click(); });
+};
 
 /* ── 啟動 ── */
 (async () => {
