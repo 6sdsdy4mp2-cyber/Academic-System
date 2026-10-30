@@ -1,6 +1,8 @@
 html_content = """<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>達爾西中學校務系統</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d4c">
+<meta name="description" content="達爾西中學校務系統：教師管理、教務檔案管理及互動式教科書閱讀器。">
+<title>達爾西中學校務系統｜優化版</title>
 <style>
 :root{--ink:#0f3d4c;--ink2:#165468;--paper:#f3f6f7;--line:#cfd9dd;--amber:#e0a030;--sel:#cfe6ee;--txt:#1d2b30}
 *{box-sizing:border-box}
@@ -105,13 +107,56 @@ th{background:#e7eef1;font-weight:600;color:var(--ink)}
 .ans-box.revealed .bulb svg{width:13px;height:13px}
 .ans-box.edit-mode{cursor:pointer;border:2px dashed #b3261e;background:rgba(255,253,247,0.85)}
 .ans-box.edit-mode:hover{background:rgba(255,220,220,0.85)}
+
+/* ── 全面優化：響應式版面、操作狀態與可讀性 ── */
+:root{color-scheme:light}
+button,input,select{transition:background-color .15s,border-color .15s,box-shadow .15s}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #7fb7c7;outline-offset:2px}
+.btn{min-height:36px}
+.btn:active{transform:translateY(1px)}
+header{position:relative;z-index:2;box-shadow:0 2px 8px #0f3d4c22}
+#v-teachers,#v-books{padding:clamp(16px,3vw,36px)}
+#t-table{overflow-x:auto}
+table{border:1px solid var(--line);border-radius:6px;overflow:hidden}
+th{white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+.book{box-shadow:0 2px 8px #0f3d4c0d;transition:transform .15s,box-shadow .15s}
+.book:hover{transform:translateY(-2px);box-shadow:0 6px 18px #0f3d4c18}
+#tree{width:clamp(170px,22vw,260px)}
+#list{min-width:0}
+#list table{min-width:620px}
+#reader{overscroll-behavior:contain}
+.rbar{position:sticky;top:0;z-index:3}
+#scroll{overscroll-behavior:contain}
+@media(max-width:760px){
+  body{font-size:14px}
+  header{height:auto;min-height:56px;padding:10px 12px;gap:10px;flex-wrap:wrap}
+  header h1{font-size:16px;width:100%}
+  nav{height:42px;margin:0;flex:1;order:3;width:100%}
+  nav button{padding:0 12px;font-size:13px}
+  header .sp{display:none}
+  #who{margin-left:auto;font-size:12px}
+  header a{font-size:12px}
+  .split{flex-direction:column}
+  #tree{width:100%;max-height:130px;border-right:0;border-bottom:1px solid var(--line);display:flex;overflow:auto;gap:4px}
+  #tree .tn{width:auto;min-width:max-content;padding:8px 10px!important}
+  #v-teachers,#v-books{padding:16px}
+  .row{gap:8px}
+  .row input{min-width:0;flex:1;width:100%}
+  .rbar{gap:6px;padding:8px;max-height:42vh;overflow:auto}
+  .rt{max-width:100%;width:100%}
+  #scroll{padding:10px}
+  #sheet{max-width:100%}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
 </style></head><body>
 
 <div id="login"><form id="lf">
 <h1>達爾西中學</h1><p>校務系統・教職員登入</p>
 <label for="u">帳號</label><input id="u" autocomplete="username" required autofocus>
 <label for="p">密碼</label><input id="p" type="password" autocomplete="current-password" required>
-<div id="err"></div><button>登入</button>
+<div id="err" role="alert" aria-live="polite"></div><button>登入</button><small style="display:block;margin-top:14px;color:#6b7f86;line-height:1.5">本系統資料儲存於目前裝置的瀏覽器，不會自動同步至其他裝置。</small>
 </form></div>
 
 <header>
@@ -218,10 +263,10 @@ const H = async s => {
 let idb;
 const openDb = () => new Promise((ok, no) => {
   const r = indexedDB.open('darcy-school', 1);
-  r.onupgradeneeded = () => { const d = r.result; ['teachers', 'nodes', 'books'].forEach(n => d.createObjectStore(n, {keyPath: 'id', autoIncrement: true})); d.createObjectStore('ann'); };
-  r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  r.onupgradeneeded = () => { const d = r.result; ['teachers', 'nodes', 'books'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, {keyPath: 'id', autoIncrement: true}); }); if (!d.objectStoreNames.contains('ann')) d.createObjectStore('ann'); };
+  r.onsuccess = () => { r.result.onversionchange = () => r.result.close(); ok(r.result); }; r.onerror = () => no(r.error); r.onblocked = () => no(new Error('資料庫正在被其他分頁使用，請關閉其他校務系統分頁後重試。'));
 });
-const tx = (s, m, f) => new Promise((ok, no) => { const t = idb.transaction(s, m), q = f(t.objectStore(s)); t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error); });
+const tx = (s, m, f) => new Promise((ok, no) => { let q; let t; try { t = idb.transaction(s, m); q = f(t.objectStore(s)); } catch (e) { no(e); return; } t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error || new Error('資料儲存失敗')); t.onabort = () => no(t.error || new Error('資料操作已取消')); });
 const all = s => tx(s, 'readonly', st => st.getAll());
 const get = (s, k) => tx(s, 'readonly', st => st.get(k));
 const put = (s, v, k) => tx(s, 'readwrite', st => st.put(v, k));
@@ -237,7 +282,7 @@ $('#lf').onsubmit = async e => {
     if (u === ADMIN_USER && p === ADMIN_HASH) s = {role: 'admin', name: '管理員'};
     else { const t = (await all('teachers')).find(x => x.username === u); if (t && t.pw === p) s = {role: 'teacher', uid: t.id, name: t.name}; }
     if (!s) { $('#err').textContent = '帳號或密碼錯誤，請再試一次。'; return; }
-    sessionStorage.s = JSON.stringify(s); start(s);
+    sessionStorage.removeItem('s'); start(s);
   } catch (x) { $('#err').textContent = x.message || '登入失敗'; }
 };
 function start(s) {
@@ -278,7 +323,7 @@ on('#t-add', 'onclick', async () => {
   const name = $('#t-name').value.trim(), title = $('#t-title').value.trim(), user = $('#t-user').value.trim(), pw = $('#t-pass').value;
   if (!name || !title) fail('請輸入姓名與職務');
   chkAcct(user, pw, true);
-  if ((await all('teachers')).some(t => t.username === user)) fail('這個帳號已經有人使用');
+  if ((await all('teachers')).some(t => String(t.username || '').toLowerCase() === user.toLowerCase())) fail('這個帳號已經有人使用');
   await put('teachers', {name, title, username: user, pw: await H(pw), created: now()});
   ['#t-name', '#t-title', '#t-user', '#t-pass'].forEach(x => $(x).value = ''); $('#t-name').focus(); loadTeachers();
 });
@@ -297,7 +342,7 @@ on('#t-table', 'onclick', async e => {
     if (!n.trim() || !t.trim()) fail('請輸入姓名與職務');
     chkAcct(u.trim(), p, false);
     const row = await get('teachers', +d.e); if (!row) fail('找不到此教師');
-    if ((await all('teachers')).some(x => x.username === u.trim() && x.id !== row.id)) fail('這個帳號已經有人使用');
+    if ((await all('teachers')).some(x => String(x.username || '').toLowerCase() === u.trim().toLowerCase() && x.id !== row.id)) fail('這個帳號已經有人使用');
     Object.assign(row, {name: n.trim(), title: t.trim(), username: u.trim()});
     if (p) row.pw = await H(p);
     await put('teachers', row); loadTeachers();
@@ -306,10 +351,10 @@ on('#t-table', 'onclick', async e => {
 on('#chpw', 'onclick', async e => {
   e.preventDefault();
   const o = prompt('請輸入目前的密碼'); if (o === null) return;
-  const n = prompt('請輸入新密碼（至少 4 個字元）'); if (!n) return;
+  const n = prompt('請輸入新密碼（至少 8 個字元）'); if (!n) return;
   const t = await get('teachers', ME.uid);
   if (!t || t.pw !== await H(o)) fail('目前的密碼不正確');
-  if (n.length < 4) fail('新密碼至少 4 個字元');
+  if (n.length < 8) fail('新密碼至少 8 個字元');
   t.pw = await H(n); await put('teachers', t); alert('密碼已更新');
 });
 
@@ -361,7 +406,9 @@ on('#f-input', 'onchange', async e => {
 });
 on('#f-ren', 'onclick', async () => {
   const it = items.find(x => x.id === sel), n = (prompt('重新命名', it.name) || '').trim(); if (!n) return;
-  it.name = n; await put('nodes', it); loadFs(cwd);
+  if (/[\\/:*?"<>|]/.test(n) || n.length > 100) fail('名稱不可包含 \ / : * ? " < > |，且不可超過 100 字');
+   if (NS.some(x => x.id !== it.id && (x.parent || null) === cwd && x.name.toLowerCase() === n.toLowerCase())) fail('此資料夾已有同名項目');
+   it.name = n; await put('nodes', it); loadFs(cwd);
 });
 on('#f-del', 'onclick', async () => {
   const it = items.find(x => x.id === sel);
@@ -388,7 +435,9 @@ async function loadBooks() {
     : `<div class="empty">書架是空的。${ME.admin ? '選擇 PDF 或圖片檔後按「新增教科書」。' : '請等管理員新增教科書。'}</div>`;
 }
 on('#b-add', 'onclick', async () => {
-  const f = $('#b-file').files[0]; if (!f) fail('請先選擇檔案');
+  if (!ME.admin) fail('只有管理員可以新增教科書');
+   const f = $('#b-file').files[0]; if (!f) fail('請先選擇檔案');
+   if (f.size > 100 * 1024 * 1024) fail('教科書檔案不可超過 100 MB');
   const ext = (f.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
   const kind = ext === '.pdf' ? 'pdf' : ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext) ? 'image' : fail('教科書僅支援 PDF 或圖片檔');
   await put('books', {title: $('#b-title').value.trim() || f.name.replace(/\.[^.]+$/, ''), kind, blob: f, created: now()});
@@ -396,7 +445,7 @@ on('#b-add', 'onclick', async () => {
 });
 on('#shelf', 'onclick', async e => {
   const d = e.target.dataset;
-  if (d.x && confirm('確定刪除這本教科書？筆跡與答案遮罩設定也會一併刪除。')) {
+  if (d.x && ME.admin && confirm('確定刪除這本教科書？筆跡與答案遮罩設定也會一併刪除。')) {
     await del('books', +d.x);
     for (const k of await tx('ann', 'readonly', s => s.getAllKeys())) if (k.split('|')[1] === d.x) await del('ann', k);
     loadBooks();
@@ -540,7 +589,7 @@ function redraw() {
   ictx.globalAlpha = 1;
 }
 const saveInk = () => R.mode === 'save' ? put('ann', R.strokes, annKey()) : 0;
-const pt = e => { const r = ink.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+const pt = e => { const r = ink.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
 ink.onpointerdown = e => {
   if (R.tool === 'laser') return;
   if (R.tool === 'ans' && ME.admin) {
@@ -588,12 +637,12 @@ function setTool(t) {
   renderAnswers();
 }
 for (const k in TOOLS) if ($(TOOLS[k])) $(TOOLS[k]).onclick = () => setTool(k);
-$('#r-undo').onclick = () => { R.strokes.pop(); redraw(); saveInk(); };
+$('#r-undo').onclick = () => { if (!R.strokes.length) return; R.strokes.pop(); redraw(); saveInk(); };
 $('#r-clear').onclick = () => { if (confirm('清除本頁所有筆跡？')) { R.strokes = []; redraw(); saveInk(); } };
 const zoom = f => { R.scale = Math.min(4, Math.max(.4, R.scale * f)); render(); };
 $('#r-zin').onclick = () => zoom(1.2); $('#r-zout').onclick = () => zoom(1 / 1.2);
 $('#r-prev').onclick = () => gotoPage(R.page - 1); $('#r-next').onclick = () => gotoPage(R.page + 1);
-$('#r-close').onclick = async () => { await saveInk(); $('#reader').classList.remove('on'); R.strokes = []; R.pdf = null; };
+$('#r-close').onclick = async () => { await saveInk(); $('#reader').classList.remove('on'); R.strokes = []; R.pdf = null; if (R.img && R.img.src && R.img.src.startsWith('blob:')) URL.revokeObjectURL(R.img.src); R.img = null; R.task = null; R.trail = []; R.lz = null; $('#sheet').classList.remove('night'); }; 
 document.addEventListener('keydown', e => {
   if (!$('#reader').classList.contains('on') || ['SELECT', 'INPUT'].includes(e.target.tagName)) return;
   if (e.key === '+' || e.key === '=') zoom(1.2);
@@ -605,6 +654,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') $('#r-undo').click();
 });
 ink.classList.add('pen');
+window.addEventListener('beforeunload', () => { if (R.mode === 'save' && R.strokes.length && idb) { try { saveInk(); } catch (_) {} } });
 
 /* ── 打開方式、雷射筆與閱讀工具 ── */
 let pendingBook = 0, lastCls = '';
@@ -637,15 +687,15 @@ $('#r-jump').onchange = e => { gotoPage(+e.target.value || R.page); e.target.val
 $('#r-png').onclick = () => {
   const c = document.createElement('canvas'); c.width = pageCv.width; c.height = pageCv.height;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(pageCv, 0, 0); x.drawImage(ink, 0, 0);
-  c.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${$('#r-title').textContent}-第${R.page}頁.png`; a.click(); });
+  c.toBlob(b => { if (!b) return; const url = URL.createObjectURL(b); const a = document.createElement('a'); a.href = url; a.download = `${$('#r-title').textContent}-第${R.page}頁.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); });
 };
 
 /* ── 啟動 ── */
 (async () => {
-  try { idb = await openDb(); } catch (e) { $('#err').textContent = '無法開啟瀏覽器儲存空間，請勿使用無痕模式。'; return; }
+  try { idb = await openDb(); } catch (e) { $('#err').textContent = '無法開啟瀏覽器儲存空間：' + (e.message || '請確認瀏覽器支援 IndexedDB，並避免使用無痕模式。'); return; }
   try {
-    const s = JSON.parse(sessionStorage.s || 'null');
-    if (s && (s.role === 'admin' || await get('teachers', s.uid))) start(s);
+    // 安全性：不信任可由使用者自行修改的 sessionStorage 角色資料；重新載入必須重新登入。
+    sessionStorage.removeItem('s');
   } catch (e) { sessionStorage.clear(); }
 })();
 </script></body></html>
